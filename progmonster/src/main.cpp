@@ -2,10 +2,10 @@
 
 #include "lemlib/api.hpp" // IWYU pragma: keep
 #include "main.h"
-pros::Motor onetwo_motor(19, pros::MotorGearset::green); // left motors on ports 1, 2, 3
-pros::Motor threefour_motor(17, pros::MotorGearset::green); // right motors on ports 4, 5, 6
-pros::Motor five_motor(3, pros::MotorGearset::green); // left motors on ports 1, 2, 3
-pros::Motor six_motor(2, pros::MotorGearset::green); // right motors on ports 4, 5, 6
+pros::Motor onetwo_motor(19, pros::MotorGearset::green);
+pros::Motor threefour_motor(17, pros::MotorGearset::green); 
+pros::Motor five_motor(3, pros::MotorGearset::green); 
+pros::Motor six_motor(2, pros::MotorGearset::green); 
 int basket = 1; //1 is lower, 2 is upper
 pros::Controller controller(pros::E_CONTROLLER_MASTER);
 pros::ADIPort scraper('A', pros::E_ADI_DIGITAL_OUT);
