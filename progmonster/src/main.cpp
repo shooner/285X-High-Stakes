@@ -14,6 +14,72 @@ int basket = 1; //1 is lower, 2 is upper
 pros::Controller controller(pros::E_CONTROLLER_MASTER);
 pros::ADIPort scraper('A', pros::E_ADI_DIGITAL_OUT);
 pros::Vision vision_sensor (VISION_PORT);
+pros::MotorGroup left_motors({ 1, 1,1}, pros::MotorGearset::blue); // left motors on ports 1, 2, 3
+pros::MotorGroup right_motors({1, 1, 1}, pros::MotorGearset::blue); // right motors on ports 4, 5, 6  
+pros::Rotation vertical(20);
+
+lemlib::Drivetrain drivetrain(&left_motors, // left motor group
+                              &right_motors, // right motor group
+                              13, // 12.5 inch track width
+                              lemlib::Omniwheel::OLD_325, // using old 3.25" omnis
+                              400, // drivetrain rpm is 400
+                              2 // horizontal drift is 2
+);
+
+lemlib::TrackingWheel vertical_wheel(&vertical, lemlib::Omniwheel::NEW_275, 0);
+pros::Imu imu(10);
+
+lemlib::OdomSensors sensors(&vertical_wheel, // vertical tracking wheel 1, set to null
+                            nullptr, // vertical tracking wheel 2, set to nullptr as we are using IMEs
+                            nullptr, // horizontal tracking wheel 1
+                            nullptr, // horizontal tracking wheel 2, set to nullptr as we don't have a second one
+                            &imu // inertial sensor
+);
+
+
+lemlib::ControllerSettings lateral_controller(12, // proportional gain (kP)
+                                              0, // integral gain (kI)
+                                              18, // derivative gain (kD)
+                                              3, // anti windup
+                                              1, // small error range, in inches
+                                              100, // small error range timeout, in milliseconds
+                                              3, // large error range, in inches
+                                              500, // large error range timeout, in milliseconds
+                                              20 // maximum acceleration (slew)
+);
+// angular PID controller
+lemlib::ControllerSettings angular_controller(8 , // proportional gain (kP)
+                                              0, // integral gain (kI)
+                                              69, // derivative gain (kD)
+                                              3, // anti windup
+                                              1, // small error range, in degrees
+                                              100, // small error range timeout, in milliseconds
+                                              3, // large error range, in degrees
+                                              500, // large error range timeout, in milliseconds
+                                              0 // maximum acceleration (slew)
+);
+
+lemlib::ExpoDriveCurve throttle_curve(20, // joystick deadband out of 127
+                                     20, // minimum output where drivetrain will move out of 127
+                                     1.038 // expo curve gain
+);
+
+
+// input curve for steer input during driver control
+lemlib::ExpoDriveCurve steer_curve(20, // joystick deadband out of 127
+                                  20, // minimum output where drivetrain will move out of 127
+                                  1.048 // expo curve gain
+);
+
+
+
+lemlib::Chassis chassis(drivetrain,
+                        lateral_controller,
+                        angular_controller,
+                        sensors,
+                        &throttle_curve,
+                        &steer_curve
+);
 
 static bool detect_signature (pros:: Vision& vision, std::uint8_t sig_id, int min_w = 6, int min_h = 6) {
     pros::vision_object_s_t objs[1];
@@ -87,7 +153,7 @@ void motorControl(void* param) {
             bool red_present = detect_signature (vision_sensor, RED_SIG);
             bool blue_present = detect_signature (vision_sensor, BLUE_SIG);
             if (red_present != last_red) {
-                onetwo_motor.move(127);
+                onetwo_motor.move(-127);
 				threefour_motor.move(127);
 				five_motor.move(0);
 				six_motor.move(-127);
