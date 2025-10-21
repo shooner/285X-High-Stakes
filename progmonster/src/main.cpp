@@ -93,7 +93,7 @@ static bool detect_signature (pros:: Vision& vision, std::uint8_t sig_id, int mi
 }
 
 void toggleBasket(void* param){
-    /*while(true){
+    while(true){
         if(controller.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_L1)){
 			controller.clear_line(0);
             if(basket==1){
@@ -104,26 +104,6 @@ void toggleBasket(void* param){
             else if(basket==2){
                 basket = 1;
                 controller.print(0, 0, "Bottom Basket");
-                pros::delay(100);
-            }
-        }
-        pros::delay(50);
-    }*/
-   while(true){
-        if(controller.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_L1)){
-            // Clear the controller line and give the controller a few ms to apply it,
-            // then print a padded string so we always overwrite any previous text.
-            controller.clear_line(0);
-            pros::delay(5);
-
-            if(basket==1){
-                basket = 2;
-                controller.print(0, 0, "%-13s", "Top Basket");      // pad to 13 chars
-                pros::delay(100);
-            }
-            else if(basket==2){
-                basket = 1;
-                controller.print(0, 0, "%-13s", "Bottom Basket");   // longest message
                 pros::delay(100);
             }
         }
