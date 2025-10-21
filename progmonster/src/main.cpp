@@ -165,3 +165,71 @@ void opcontrol(){
 	}
 
 }
+
+void autonomous() {
+
+    int a = -1;
+    int b = 1;
+
+    //negative side auton
+    /*
+    chassis.setPose(-51.75,18,135);
+    doinker.set_value(true);
+    pros::delay(250);
+    chassis.turnToPoint(-51.75, 0, 1000,{.forwards=false, .maxSpeed=(50)});
+    chassis.waitUntilDone();
+    doinker.set_value(false);
+    chassis.moveToPoint(-51.75, 0, 1000,{.forwards=false});
+    chassis.turnToPoint(-57, 0, 500,{.forwards=false});
+    chassis.moveToPoint(-57, 0, 1250);
+    pros::delay(500);
+    conveyor.move(127);
+    /*
+    */
+
+
+//final skills
+
+
+ // start of bonus route
+
+    chassis.setBrakeMode(pros::E_MOTOR_BRAKE_BRAKE);
+    chassis.setPose(a*51.141, b*10.641, 67);
+
+    chassis.turnToPoint(a*23.3, b*22.95, 500);
+    chassis.moveToPoint(a*23.3, b*22.95, 800);
+    pros::delay(1400);
+
+    chassis.turnToPoint(a*3.923, b*47.494, 500);
+    chassis.moveToPoint(a*3.923, b*47.494, 800);
+    pros::delay(900);
+
+    chassis.turnToPoint(a*20.8, b*36.5, 500);
+    chassis.moveToPoint(a*20.8, b*36.5, 800);
+    pros::delay(300);
+
+    chassis.turnToPoint(a*65.7, b*46.1, 500);
+    chassis.moveToPoint(a*65.7, b*46.1, 800);
+    pros::delay(1200);
+
+    chassis.turnToPoint(a*25.8, b*46.3, 500);
+    chassis.moveToPoint(a*25.8, b*46.3, 800);
+
+
+
+    //chassis.turnToPoint(-46, -17, 800,{.forwards=false,.minSpeed=40});
+    //chassis.moveToPoint(-46, -17, 800,{.forwards=false,.maxSpeed=60,.minSpeed=40});
+
+
+
+
+
+    while (true){
+        pros::delay(10);
+    }
+}
+
+
+ //end of q2 bonus route
+
+//start of q3 bonus route
