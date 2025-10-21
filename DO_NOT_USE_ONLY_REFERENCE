@@ -1,0 +1,1409 @@
+
+
+#include "main.h"
+#include "lemlib/api.hpp" // IWYU pragma: keep
+#include "lemlib/chassis/chassis.hpp"
+#include "pros/abstract_motor.hpp"
+#include "pros/adi.h"
+#include "pros/adi.hpp"
+#include "pros/misc.h"
+#include "pros/motors.hpp"
+#include "pros/rtos.h"
+#include "pros/rtos.hpp"
+#include "armcontrol.hpp"
+#include <string>
+extern pros::Motor arm;
+extern pros::Rotation encoder;
+pros::MotorGroup left_motors({ -17, 16,-15}, pros::MotorGearset::blue); // left motors on ports 1, 2, 3
+pros::MotorGroup right_motors({13, -12, 11}, pros::MotorGearset::blue); // right motors on ports 4, 5, 6  
+pros::Motor conveyor(-5, pros::MotorGearset::blue);        
+pros::Motor fsintake(-7, pros::MotorGearset::green);    
+
+
+pros::Rotation vertical(20);
+pros::ADIPort doinker('B',pros::E_ADI_DIGITAL_OUT);
+pros::ADIPort clamp('A', pros::E_ADI_DIGITAL_OUT);  
+pros::Controller controller(pros::E_CONTROLLER_MASTER);
+
+
+lemlib::TrackingWheel vertical_wheel(&vertical, lemlib::Omniwheel::NEW_275, 0);
+/**  Track Width:
+*    Wheel Diam:
+*    Horizontal Drift: 2
+*/
+pros::Imu imu(10);          
+lemlib::Drivetrain drivetrain(&left_motors, // left motor group
+                              &right_motors, // right motor group
+                              12.5, // 12.5 inch track width
+                              lemlib::Omniwheel::OLD_325, // using old 3.25" omnis
+                              400, // drivetrain rpm is 400
+                              2 // horizontal drift is 2
+);
+
+lemlib::TrackingWheel horizontal_wheel(&horizontal, lemlib::Omniwheel::NEW_275, 0);
+
+
+lemlib::TrackingWheel vertical_wheel(&vertical, lemlib::Omniwheel::NEW_275, 0);
+
+lemlib::OdomSensors sensors(&vertical_wheel, // vertical tracking wheel 1, set to null
+                            nullptr, // vertical tracking wheel 2, set to nullptr as we are using IMEs
+                            &horizontal_wheel, // horizontal tracking wheel 1
+                            nullptr, // horizontal tracking wheel 2, set to nullptr as we don't have a second one
+                            &imu // inertial sensor
+);
+
+
+
+// lateral PID controller
+lemlib::ControllerSettings lateral_controller(10, // proportional gain (kP)
+                                              0, // integral gain (kI)
+                                              3, // derivative gain (kD)
+                                              3, // anti windup
+                                              1, // small error range, in inches
+                                              100, // small error range timeout, in milliseconds
+                                              3, // large error range, in inches
+                                              500, // large error range timeout, in milliseconds
+                                              20 // maximum acceleration (slew)
+);
+// angular PID controller
+lemlib::ControllerSettings angular_controller(2  , // proportional gain (kP)
+                                              0, // integral gain (kI)
+                                              10, // derivative gain (kD)
+                                              3, // anti windup
+                                              1, // small error range, in degrees
+                                              100, // small error range timeout, in milliseconds
+                                              3, // large error range, in degrees
+                                              500, // large error range timeout, in milliseconds
+                                              0 // maximum acceleration (slew)
+);
+// input curve for throttle input during driver control
+lemlib::ExpoDriveCurve throttle_curve(3, // joystick deadband out of 127
+                                     10, // minimum output where drivetrain will move out of 127
+                                     1.019 // expo curve gain
+);
+
+
+// input curve for steer input during driver control
+lemlib::ExpoDriveCurve steer_curve(3, // joystick deadband out of 127
+                                  10, // minimum output where drivetrain will move out of 127
+                                  1.019 // expo curve gain
+);
+
+
+// create the chassis
+lemlib::Chassis chassis(drivetrain,
+                        lateral_controller,
+                        angular_controller,
+                        sensors,
+                        &throttle_curve,
+                        &steer_curve
+);
+/**
+ * A callback function for LLEMU's center button.
+ *
+ * When this callback is fired, it will toggle line 2 of the LCD text between
+ * "I was pressed!" and nothing.    
+ */
+ void driveTask(void* param) {
+    while (true) {
+
+        int leftY = controller.get_analog(pros::E_CONTROLLER_ANALOG_LEFT_Y);
+        int rightX = controller.get_analog(pros::E_CONTROLLER_ANALOG_RIGHT_X);
+        // move the chassis with arcade drive
+        chassis.arcade(leftY, rightX, false, 0.5);
+        // move the chassis with tank drive
+        //chassis.tank(leftY, rightY);
+        pros::delay(20);
+    }
+   
+ }
+ void conveyorTask(void* param) {
+    while (true) {
+        if (controller.get_digital(pros::E_CONTROLLER_DIGITAL_R2)){
+            conveyor.move(127);
+        }
+        else if (controller.get_digital(pros::E_CONTROLLER_DIGITAL_DOWN)){
+            conveyor.move(-127);
+    } else{
+            conveyor.move(0);
+        }
+        pros::delay(20);
+    }
+ }
+ 
+ 
+ void intakeTask(void* param) {
+    while (true) {
+          if (controller.get_digital(pros::E_CONTROLLER_DIGITAL_L2)){
+            fsintake.move(127);
+        } else if (controller.get_digital(pros::E_CONTROLLER_DIGITAL_LEFT)){
+            fsintake.move(-127);
+    }   else{
+            fsintake.move(0);
+        }
+    }
+ }
+ 
+ void clampTask(void* param) {
+    bool clamp_engaged = false;
+    while (true) {
+        if (controller.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_R1)) {
+            clamp_engaged = !clamp_engaged;  // Toggle clamp
+            clamp.set_value(clamp_engaged);
+            pros::delay(200);               // Prevent rapid toggling
+        }
+
+
+        pros::delay(20);
+    }
+}
+void doinkTask(void* param) {
+    bool doink_out = false;
+    while (true) {
+        if (controller.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_X)) {
+            doink_out = !doink_out;  // Toggle clamp
+            doinker.set_value(doink_out);
+            pros::delay(200);               // Prevent rapid toggling
+        }
+
+
+        pros::delay(20);
+    }
+}
+void armTask(void* param) {
+    while (true){
+        if (controller.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_L1)) {
+        nextState();
+        }
+
+
+        liftControl();  
+        pros::delay(10);
+    }
+}
+void posGetTask(void* param) {
+    while (true){
+        lemlib::Pose pose = chassis.getPose();
+        pros::lcd::print(0, "Pose: %i", pose.x, pose.y, pose.theta);
+        pros::delay(10); // delay to save resources. DO NOT REMOVE
+    }
+}
+void on_center_button() {
+    static bool pressed = false;
+    pressed = !pressed;
+    if (pressed) {
+        pros::lcd::set_text(2, "I was pressed!");
+    }
+}
+
+
+/**
+ * Runs initialization code. This occurs as soon as the program is started.
+ *
+ * All other competition modes are blocked by initialize; it is recommended
+ * to keep execution time for this mode under a few seconds.
+ */
+void initialize() {
+    pros::lcd::initialize();
+    chassis.calibrate();
+    /*
+    chassis.setPose(-48,24,90);
+    while (true){
+        lemlib::Pose pose = chassis.getPose();
+        pros::lcd::print(0, "X: %f", pose.x);
+        pros::lcd::print(1, "Y: %f", pose.y);
+        pros::lcd::print(2, "Theta: %f", pose.theta);
+        pros::delay(10); // delay to save resources. DO NOT REMOVE
+    }
+        */
+}
+
+
+/**
+ * Runs while the robot is in the disabled state of Field Management System or
+ * the VEX Competition Switch, following either autonomous or opcontrol. When
+ * the robot is enabled, this task will exit.
+ */
+void disabled() {}
+
+
+/**
+ * Runs after initialize(), and before autonomous when connected to the Field
+ * Management System or the VEX Competition Switch. This is intended for
+ * competition-specific initialization routines, such as an autonomous selector
+ * on the LCD.
+ *
+ * This task will exit when the robot is enabled and autonomous or opcontrol
+ * starts.
+ */
+void competition_initialize() {}
+
+
+/**
+ * Runs the user autonomous code. This function will be started in its own task
+ * with the default priority and stack size whenever the robot is enabled via
+ * the Field Management System or the VEX Competition Switch in the autonomous
+ * mode. Alternatively, this function may be called in initialize or opcontrol
+ * for non-competi  tion testing purposes.        
+ *  
+ * If the robot is disabled or communications is lost, the autonomous task
+ * will be stopped. Re-enabling the rob ot will restart the task, not re-start it
+ * from where it left off.
+ */
+
+
+
+
+void autonomous() {
+
+    int a = -1;
+
+    //negative side auton
+    /*
+    chassis.setPose(-51.75,18,135);
+    doinker.set_value(true);
+    pros::delay(250);
+    chassis.turnToPoint(-51.75, 0, 1000,{.forwards=false, .maxSpeed=(50)});
+    chassis.waitUntilDone();
+    doinker.set_value(false);
+    chassis.moveToPoint(-51.75, 0, 1000,{.forwards=false});
+    chassis.turnToPoint(-57, 0, 500,{.forwards=false});
+    chassis.moveToPoint(-57, 0, 1250);
+    pros::delay(500);
+    conveyor.move(127);
+    /*
+    */
+
+
+//final skills
+
+
+/* // start of q2 bonus route
+
+    chassis.setBrakeMode(pros::E_MOTOR_BRAKE_BRAKE);
+    chassis.setPose(-51.141, 10.641, 67);
+
+    chassis.turnToPoint(-23.3, 22.95, 500);
+    chassis.moveToPoint(-23.3, 22.95, 800);
+    pros::delay(1400);
+
+    chassis.turnToPoint(-3.923, 47.494, 500);
+    chassis.moveToPoint(-3.923, 47.494, 800);
+    pros::delay(900);
+
+    chassis.turnToPoint(-20.8, 36.5, 500);
+    chassis.moveToPoint(-20.8, 36.5, 800);
+    pros::delay(300);
+
+    chassis.turnToPoint(-65.7, 46.1, 500);
+    chassis.moveToPoint(-65.7, 46.1, 800);
+    pros::delay(1200);
+
+    chassis.turnToPoint(-25.8, 46.3, 500);
+    chassis.moveToPoint(-25.8, 46.3, 800);
+
+
+
+    //chassis.turnToPoint(-46, -17, 800,{.forwards=false,.minSpeed=40});
+    //chassis.moveToPoint(-46, -17, 800,{.forwards=false,.maxSpeed=60,.minSpeed=40});
+
+
+
+
+
+    while (true){
+        pros::delay(10);
+    }
+
+
+
+*/ //end of q2 bonus route
+
+//start of q3 bonus route
+
+    chassis.setBrakeMode(pros::E_MOTOR_BRAKE_BRAKE);
+    chassis.setPose(-55.93, -13.54, 105);
+
+    chassis.turnToPoint()
+
+
+
+
+
+/*
+*/
+}  
+
+
+/**
+ * Runs the operator control code. This function will be started in its own task
+ * with the default priority and stack size whenever the robot is enabled via
+ * the Field Management System or the VEX Competition Switch in the operator
+ * control mode.
+ *
+ * If no competition control is connected, this function will run immediately
+ * following initialize().
+ *
+ * If the robot is disabled or communications is lost, the
+ * operator control task will be stopped. Re-enabling the robot will restart the
+ * task, not resume it from where it left off.
+ */
+ 
+void opcontrol() {
+    pros::lcd::initialize();
+    arm.set_brake_mode(pros::E_MOTOR_BRAKE_HOLD);
+    pros::Task position(posGetTask, NULL, "Position Task");
+    pros::Task doinker(doinkTask, NULL, "Doinker Task");
+    pros::Task drive(driveTask, NULL, "Drive Task");
+    pros::Task conveyor(conveyorTask, NULL, "Conveyor Task");
+    pros::Task clamp(clampTask, NULL, "Clamp Task");
+    pros::Task intake(intakeTask,NULL,"Intake Task");
+    pros::Task arm(armTask,NULL,"Arm Task");
+    // controller
+    // loop to continuously update motors
+    while (true) { // infinite loop
+        pros::delay(10);
+        // print measurements from the adi encoder
+    }
+}  
+
+
+
+
+
+
+#ifndef ARMCONTROL_HPP
+#define ARMCONTROL_HPP
+
+
+void liftControl();
+void setArmPosition(int targetDegrees);
+void nextState();
+
+
+#endif
+
+
+
+
+
+
+
+
+
+
+
+
+oid autonomous() {
+    clamp.set_value(false);
+/*
+    setPose(0,0,0);
+    moveToPoint(0, -36, 2000, {.forwards = false});
+    pros::delay(1000);
+    clamp.set_value(true);
+    pros::delay(1000);
+    conveyor.move(127);
+    */
+   
+    // final skills
+    /*
+    chassis.setPose(-58, 0, 90);
+    conveyor.move(127);
+    pros::delay(1000);
+    right_motors.move(50);
+    left_motors.move(50);
+    pros::delay(600);
+    right_motors.move(0);
+    left_motors.move(0);
+    pros::delay(100);
+    chassis.turnToPoint(-47.5, -26, 1000, {.forwards = false});
+    chassis.moveToPoint(-47.5, -26, 1500, {.forwards = false, .maxSpeed=60});
+    conveyor.move(0);
+    pros::delay(700);
+    clamp.set_value(true);
+    pros::delay(150);
+    chassis.turnToPoint(-58, -50, 1000);
+    pros::delay(10);
+    fsintake.move(127);
+    pros::delay(300);
+    chassis.moveToPoint(-58, -50, 1500);
+    pros::delay(1200);
+    fsintake.move(60);
+    conveyor.move(127);
+    pros::delay(1000);
+    right_motors.move(-50);
+    left_motors.move(-50);
+    pros::delay(200);
+    right_motors.move(0);
+    left_motors.move(0);
+    chassis.turnToPoint(-65, -63, 1000,{.forwards=false});
+    pros::delay(1000);
+    right_motors.move(-50);
+    left_motors.move(-50);
+    pros::delay(900);
+    right_motors.move(0);
+    left_motors.move(0);
+    clamp.set_value(false); //end of right red corner
+    pros::delay(500);
+    right_motors.move(50);
+    left_motors.move(50);
+    pros::delay(300);
+    right_motors.move(0);
+    left_motors.move(0);
+    chassis.turnToPoint(-47.5, -48, 1000);
+    chassis.moveToPoint(-47.5, -48, 1000);
+    pros::delay(50);
+    chassis.turnToPoint(-47.5, 0, 1500,{.forwards=false});
+    chassis.moveToPoint(-47.5, 0, 5000,{.forwards=false});
+    // move from right corner to mid line
+     // edit these two for transition with full field
+     
+    chassis.turnToPoint(-48.3, 22, 1500,{.forwards=false}); //edit these two with yeah
+    chassis.moveToPoint(-48.3, 22, 1500, {.forwards=false,.maxSpeed=50});
+    conveyor.move(0);
+    pros::delay(600);
+    clamp.set_value(true);//edit delay and stuff once clamp
+    pros::delay(500);  
+    chassis.turnToPoint(-54, 50, 1500);
+    fsintake.move(127);
+    chassis.moveToPoint(-54, 50, 1500);
+    pros::delay(1000);
+    fsintake.move(60);
+    conveyor.move(127);
+    pros::delay(2000);
+    chassis.turnToPoint(-64.5, 63, 1500,{.forwards=false});
+    chassis.moveToPoint(-64.5, 63, 1500,{.forwards=false});
+    conveyor.move(0);
+    pros::delay(1500);
+
+
+    clamp.set_value(false); //end of red left
+    pros::delay(200); // WORKING, 19 POINTS
+   
+    right_motors.move(50);
+    left_motors.move(50);
+    pros::delay(200);
+    right_motors.move(0);
+    left_motors.move(0);
+    conveyor.move(0);
+    fsintake.move(127);
+    chassis.turnToPoint(-24, 48, 1000); // add to y
+    chassis.moveToPoint(-24, 48, 3000);
+   
+   
+    chassis.turnToPoint(39, 33, 1500,{.forwards=false});
+    chassis.moveToPoint(39, 33, 4000,{.forwards=false});
+    pros::delay(500);
+    chassis.turnToPoint(52, 25.5, 1500,{.forwards=false});
+    chassis.moveToPoint(52, 25.5, 3000,{.forwards=false, .maxSpeed=50});
+    pros::delay(1000);
+    clamp.set_value(true);
+    pros::delay(500);
+    right_motors.move(50);
+    left_motors.move(50);
+    pros::delay(300);
+    right_motors.move(0);
+    left_motors.move(0);
+    pros::delay(500);
+    chassis.turnToPoint(65, 64, 1000, {.forwards=false});
+    chassis.moveToPoint(65, 64, 3000,{.forwards=false});
+    pros::delay(1000);
+    clamp.set_value(false);
+    pros::delay(300);
+    right_motors.move(50);
+    left_motors.move(50);
+    pros::delay(200);
+    right_motors.move(0);
+    left_motors.move(0);
+    pros::delay(500);
+    chassis.turnToPoint(48, 15, 1500,{.forwards=false});
+    chassis.moveToPoint(48, 15, 3000,{.forwards=false});
+    pros::delay(1000);
+    chassis.turnToPoint(46.5,6,1500,{.forwards=false});
+    chassis.moveToPoint(46.5,6,4000,{.forwards=false,.maxSpeed=70});
+    pros::delay(2500);
+    clamp.set_value(true);
+    pros::delay(1000);
+    conveyor.move(127);
+    pros::delay(1500);
+    chassis.turnToPoint(48,-30,1500,{.forwards=false});
+    chassis.moveToPoint(48,-30,2000,{.forwards=false});
+    pros::delay(1000);
+    chassis.turnToPoint(65,-65,1500,{.forwards=false});
+    chassis.moveToPoint(65,-65,2000,{.forwards=false});
+*/
+
+
+
+
+
+
+
+
+
+
+   
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+   
+
+
+    // match auton
+   
+    int side = -1;//1 is blue, -1 is red
+    int which = -1; // 1 is side with 4 rings, -1 is side with extra mogo (-1 IS BLUE LEFT, RED RIGHT)
+    int theta = 0;
+    if (which == 1){
+        theta = 0;
+    }
+    if (which == -1){
+        theta = 180;
+    }
+    //pros::delay(5000);
+    chassis.setPose(58*side,13*which,theta);
+    chassis.moveToPoint(58*side, 0,2000, {.forwards=false});
+    chassis.turnToHeading(-90*side, 1000);
+    pros::delay(1000);
+    right_motors.move(-30);
+    left_motors.move(-30);
+    pros::delay(450);
+    right_motors.move(0);
+    left_motors.move(0);
+   
+    conveyor.move(127);
+    pros::delay(1500);
+    right_motors.move(30);
+    left_motors.move(30);
+    pros::delay(800); // remove
+    right_motors.move(0);
+    left_motors.move(0);
+   
+    pros::delay(300);
+    chassis.turnToPoint(25*side, 23.5*which, 1000, {.forwards=false});  
+    pros::delay(1001);
+   chassis.moveToPoint(25*side, 23.5*which, 1500, {.forwards=false,.maxSpeed=60});  
+    conveyor.move(0);
+    pros::delay(1800);
+    clamp.set_value(true);
+    pros::delay(200);
+    right_motors.move(0);
+    left_motors.move(0);
+    pros::delay(1000);
+    chassis.turnToPoint(25.5*side, 51*which, 1500);
+    fsintake.move(127);
+    chassis.moveToPoint(25.5*side, 51*which, 2000,{.maxSpeed=60});
+    pros::delay(500);
+
+
+    conveyor.move(127);
+   
+    if (which == 1){
+        chassis.turnToPoint(10*side, 50, 2000);
+        chassis.moveToPoint(10*side, 50,  2000);        
+        pros::delay(300);
+        right_motors.move(-50);
+        left_motors.move(-50);
+        pros::delay(500);
+        right_motors.move(0);
+        left_motors.move(0);
+        pros::delay(300);
+    }
+   
+    pros::delay(1000);
+   
+    chassis.turnToPoint(20*side, 5*which, 1000);
+    chassis.moveToPoint(20*side, 5*which, 10000);
+     
+   
+   
+   
+   
+}  
+
+
+
+
+
+
+
+#include "main.h"
+#include "lemlib/api.hpp" // IWYU pragma: keep
+#include "lemlib/chassis/chassis.hpp"
+#include "pros/abstract_motor.hpp"
+#include "pros/adi.h"
+#include "pros/adi.hpp"
+#include "pros/misc.h"
+#include "pros/motors.hpp"
+#include "pros/rtos.h"
+#include "pros/rtos.hpp"
+#include "armcontrol.hpp"
+#include <future>
+#include <string>
+extern pros::Motor arm;
+extern pros::Rotation encoder;
+pros::MotorGroup left_motors({ -17, 16,-15}, pros::MotorGearset::blue); // left motors on ports 1, 2, 3
+pros::MotorGroup right_motors({13, -12, 11}, pros::MotorGearset::blue); // right motors on ports 4, 5, 6  
+pros::Motor conveyor(-5, pros::MotorGearset::blue);        
+pros::Motor fsintake(-7, pros::MotorGearset::green);    
+
+
+pros::Rotation vertical(20);
+pros::ADIPort doinker('B',pros::E_ADI_DIGITAL_OUT);
+pros::ADIPort clamp('A', pros::E_ADI_DIGITAL_OUT);  
+pros::Controller controller(pros::E_CONTROLLER_MASTER);
+
+
+lemlib::TrackingWheel vertical_wheel(&vertical, lemlib::Omniwheel::NEW_275, 0);
+/**  Track Width:
+*    Wheel Diam:
+*    Horizontal Drift: 2
+*/
+pros::Imu imu(10);          
+lemlib::Drivetrain drivetrain(&left_motors, // left motor group
+                              &right_motors, // right motor group
+                              14.5, // 14.5 inch track width
+                              lemlib::Omniwheel::NEW_325, // using old 3.25" omnis
+                              400, // drivetrain rpm is 400
+                              2 // horizontal drift is 2
+);
+lemlib::OdomSensors sensors(&vertical_wheel, // vertical tracking wheel 1, set to null
+                            nullptr, // vertical tracking wheel 2, set to nullptr as we are using IMEs
+                            nullptr, // horizontal tracking wheel 1
+                            nullptr, // horizontal tracking wheel 2, set to nullptr as we don't have a second one
+                            &imu // inertial sensor
+);
+// lateral PID controller
+lemlib::ControllerSettings lateral_controller(12, // proportional gain (kP)
+                                              0, // integral gain (kI)
+                                              18, // derivative gain (kD)
+                                              3, // anti windup
+                                              1, // small error range, in inches
+                                              100, // small error range timeout, in milliseconds
+                                              3, // large error range, in inches
+                                              500, // large error range timeout, in milliseconds
+                                              20 // maximum acceleration (slew)
+);
+// angular PID controller
+lemlib::ControllerSettings angular_controller(8 , // proportional gain (kP)
+                                              0, // integral gain (kI)
+                                              69, // derivative gain (kD)
+                                              3, // anti windup
+                                              1, // small error range, in degrees
+                                              100, // small error range timeout, in milliseconds
+                                              3, // large error range, in degrees
+                                              500, // large error range timeout, in milliseconds
+                                              0 // maximum acceleration (slew)
+);
+// input curve for throttle input during driver control
+lemlib::ExpoDriveCurve throttle_curve(20, // joystick deadband out of 127
+                                     20, // minimum output where drivetrain will move out of 127
+                                     1.038 // expo curve gain
+);
+
+
+// input curve for steer input during driver control
+lemlib::ExpoDriveCurve steer_curve(20, // joystick deadband out of 127
+                                  20, // minimum output where drivetrain will move out of 127
+                                  1.048 // expo curve gain
+);
+
+
+// create the chassis
+lemlib::Chassis chassis(drivetrain,
+                        lateral_controller,
+                        angular_controller,
+                        sensors,
+                        &throttle_curve,
+                        &steer_curve
+);
+/**
+ * A callback function for LLEMU's center button.
+ *
+ * When this callback is fired, it will toggle line 2 of the LCD text between
+ * "I was pressed!" and nothing.    
+ */
+ void driveTask(void* param) {
+    while (true) {
+        // Logic for opening/closing clamp or holding mobile goal
+        int leftY = controller.get_analog(pros::E_CONTROLLER_ANALOG_LEFT_Y);
+        int rightX = controller.get_analog(pros::E_CONTROLLER_ANALOG_RIGHT_X);
+        // move the chassis with arcade drive
+        chassis.arcade(leftY, rightX, false, 0.5);
+        // move the chassis with tank drive
+        //chassis.tank(leftY, rightY);
+        pros::delay(20);
+    }
+   
+ }
+ void conveyorTask(void* param) {
+    while (true) {
+        if (controller.get_digital(pros::E_CONTROLLER_DIGITAL_R2)){
+            conveyor.move(127);
+        }
+        else if (controller.get_digital(pros::E_CONTROLLER_DIGITAL_DOWN)){
+            conveyor.move(-127);
+    } else{
+            conveyor.move(0);
+        }
+        pros::delay(20);
+    }
+ }
+ 
+ 
+ void intakeTask(void* param) {
+    while (true) {
+          if (controller.get_digital(pros::E_CONTROLLER_DIGITAL_L2)){
+            fsintake.move(127);
+        } else if (controller.get_digital(pros::E_CONTROLLER_DIGITAL_LEFT)){
+            fsintake.move(-127);
+    }   else{
+            fsintake.move(0);
+        }
+    }
+ }
+ 
+ void clampTask(void* param) {
+    bool clamp_engaged = false;
+    while (true) {
+        if (controller.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_R1)) {
+            clamp_engaged = !clamp_engaged;  // Toggle clamp
+            clamp.set_value(clamp_engaged);
+            pros::delay(200);               // Prevent rapid toggling
+        }
+
+
+        pros::delay(20);
+    }
+}
+void doinkTask(void* param) {
+    bool doink_out = false;
+    while (true) {
+        if (controller.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_X)) {
+            doink_out = !doink_out;  // Toggle clamp
+            doinker.set_value(doink_out);
+            pros::delay(200);               // Prevent rapid toggling
+        }
+       
+
+
+        pros::delay(20);
+    }
+}
+void armTask(void* param) {
+    while (true){
+        if (controller.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_L1)) {
+        nextState();
+        }
+
+
+        liftControl();  
+        pros::delay(10);
+    }
+}
+void posGetTask(void* param) {
+    while (true){
+        lemlib::Pose pose = chassis.getPose();
+        pros::lcd::print(0, "Pose: %i", pose.x, pose.y, pose.theta);
+        pros::delay(10); // delay to save resources. DO NOT REMOVE
+    }
+}
+void on_center_button() {
+    static bool pressed = false;
+    pressed = !pressed;
+    if (pressed) {
+        pros::lcd::set_text(2, "I was pressed!");
+    }
+}
+
+
+/**
+ * Runs initialization code. This occurs as soon as the program is started.
+ *
+ * All other competition modes are blocked by initialize; it is recommended
+ * to keep execution time for this mode under a few seconds.
+ */
+void initialize() {
+    pros::lcd::initialize();
+    chassis.calibrate();
+    /*
+    chassis.setPose(-48,24,90);
+    while (true){
+        lemlib::Pose pose = chassis.getPose();
+        pros::lcd::print(0, "X: %f", pose.x);
+        pros::lcd::print(1, "Y: %f", pose.y);
+        pros::lcd::print(2, "Theta: %f", pose.theta);
+        pros::delay(10); // delay to save resources. DO NOT REMOVE
+    }
+        */
+}
+
+
+/**
+ * Runs while the robot is in the disabled state of Field Management System or
+ * the VEX Competition Switch, following either autonomous or opcontrol. When
+ * the robot is enabled, this task will exit.
+ */
+void disabled() {}
+
+
+/**
+ * Runs after initialize(), and before autonomous when connected to the Field
+ * Management System or the VEX Competition Switch. This is intended for
+ * competition-specific initialization routines, such as an autonomous selector
+ * on the LCD.
+ *
+ * This task will exit when the robot is enabled and autonomous or opcontrol
+ * starts.
+ */
+void competition_initialize() {}
+
+
+/**
+ * Runs the user autonomous code. This function will be started in its own task
+ * with the default priority and stack size whenever the robot is enabled via
+ * the Field Management System or the VEX Competition Switch in the autonomous
+ * mode. Alternatively, this function may be called in initialize or opcontrol
+ * for non-competi  tion testing purposes.        
+ *  
+ * If the robot is disabled or communications is lost, the autonomous task
+ * will be stopped. Re-enabling the rob ot will restart the task, not re-start it
+ * from where it left off.
+ */
+
+
+
+
+void autonomous() {
+    /* test lateral pid
+    chassis.moveToPoint(0, 12, 10000000);
+    pros::delay(2000);
+    chassis.moveToPoint(0, 0, 10000000,{.forwards=false});
+    /**/  
+   
+    //negative side auton
+    /*
+    chassis.setPose(-51.75,18,135);
+    doinker.set_value(true);
+    pros::delay(250);
+    chassis.turnToPoint(-51.75, 0, 1000,{.forwards=false, .maxSpeed=(50)});
+    chassis.waitUntilDone();
+    doinker.set_value(false);
+    chassis.moveToPoint(-51.75, 0, 1000,{.forwards=false});
+    chassis.turnToPoint(-57, 0, 500,{.forwards=false});
+    chassis.moveToPoint(-57, 0, 1250);
+    pros::delay(500);
+    conveyor.move(127);
+    /*
+    */
+
+
+//final skills
+
+
+    chassis.setBrakeMode(pros::E_MOTOR_BRAKE_BRAKE);
+    pros::Task arm(armTask,NULL,"Arm Task");
+    chassis.setPose(-60.5,0,270);
+    setArmPosition(22000);
+    pros::delay(600);
+    setArmPosition(35850);
+    chassis.moveToPoint(-46,0,700,{.forwards=false},false);
+    chassis.turnToPoint(-46, -17, 800,{.forwards=false,.minSpeed=40});
+    chassis.moveToPoint(-46, -17, 800,{.forwards=false,.maxSpeed=60,.minSpeed=40});
+    chassis.waitUntilDone();
+    clamp.set_value(true);          
+    pros::delay(400);
+    fsintake.move(127);
+    chassis.turnToPoint(-13.5, -32.6, 500);
+    conveyor.move(127);
+    chassis.moveToPoint(-13.5, -32.6, 1000,{.maxSpeed=85},false);
+    chassis.moveToPoint(20, -46.5, 1000,{.maxSpeed=85},false);
+    chassis.turnToPoint(45, -45, 350, {},false);
+    chassis.moveToPoint(45, -45, 800,{.maxSpeed=80},false);
+    pros::delay(100);
+    setArmPosition(34550);
+    chassis.turnToPoint(2, -40, 400,{.forwards=false});
+    chassis.moveToPoint(2, -40, 1200,{.forwards=false,.maxSpeed=127});
+    chassis.waitUntilDone();
+    chassis.turnToPoint(2, -56, 1000,{.maxSpeed=85});
+    conveyor.move(0);
+    pros::delay(100);
+    conveyor.move(127);
+    pros::delay(100);
+    conveyor.move(0);
+    pros::delay(100);
+    conveyor.move(127);
+    pros::delay(100);
+    conveyor.move(0);
+    pros::delay(100);
+    conveyor.move(127);
+    pros::delay(100);
+    conveyor.move(0);
+    pros::delay(200);
+    setArmPosition(30000);
+    pros::delay(100);
+    chassis.moveToPoint(2, -56, 1000,{.maxSpeed=80});
+    conveyor.move(127);
+    pros::delay(800); //adjust for stow
+    conveyor.move(0);
+    chassis.waitUntilDone();
+    setArmPosition(21000);
+    pros::delay(450);
+    chassis.moveToPoint(2,-48, 600,{.forwards=false});
+    pros::delay(300);
+    setArmPosition(34550);
+    pros::delay(500);
+    conveyor.move(127);
+    pros::delay(900);
+    conveyor.move(0);
+    pros::delay(100);
+    conveyor.move(127);
+    pros::delay(100);
+    conveyor.move(0);
+    pros::delay(100);
+    conveyor.move(127);
+    pros::delay(100);
+    conveyor.move(0);
+    chassis.moveToPoint(2,-56, 600,{.maxSpeed=80});
+    chassis.waitUntilDone();
+    setArmPosition(21000);
+    pros::delay(600);
+    conveyor.move(127);
+
+
+    chassis.moveToPoint(2, -46, 1000,{.forwards=false});
+    chassis.waitUntilDone();
+    setArmPosition(35850);
+    chassis.turnToPoint(-30, -46, 500,{},false);
+    chassis.moveToPoint(-30, -46, 1500,{.maxSpeed=70,.minSpeed=70},false);
+    chassis.moveToPoint(-41, -46, 500,{.maxSpeed=40,.minSpeed=40},false);
+    chassis.turnToPoint(-34, -46, 500,{.forwards=false},false);
+    chassis.moveToPoint(-34, -46, 500,{.forwards=false,.maxSpeed=65,.minSpeed=65},false);
+    chassis.turnToPoint(-44, -54.5, 400,{},false);
+    chassis.moveToPoint(-44, -54.5, 600,{.maxSpeed=65,.minSpeed=65},false);
+    chassis.turnToPoint(-54, -48, 500,{},false);
+    chassis.moveToPoint(-54, -48, 600,{.maxSpeed=65,.minSpeed=65},false);
+    chassis.turnToPoint(-60,-58,500,{.forwards=false},false);
+    pros::delay(1000);
+    chassis.moveToPoint(-60, -58, 500,{.forwards=false},false);
+    chassis.waitUntilDone();
+    clamp.set_value(false);
+    right_motors.move(127);
+    left_motors.move(127);
+    pros::delay(200);
+    chassis.turnToPoint(32,-57,800);
+    chassis.moveToPoint(32, -57, 2000,{.minSpeed=127});
+    conveyor.move(127);
+    chassis.moveToPoint(40, -57, 500,{.maxSpeed=70});
+    chassis.waitUntilDone();
+    pros::delay(200);
+    conveyor.move(0);
+    chassis.turnToPoint(40, -36, 600,{.forwards=false});
+    chassis.moveToPoint(40, -36, 700,{.forwards=false});
+    chassis.turnToPoint(52, -26, 600,{.forwards=false});
+    chassis.moveToPoint(52, -26, 800,{.forwards=false,.maxSpeed=60});
+    chassis.waitUntilDone();
+    clamp.set_value(true);
+    pros::delay(400);
+    chassis.turnToPoint(43, -52, 500,{},false);
+    chassis.moveToPoint(43, -52, 800,{},false);
+    chassis.turnToPoint(58, -62, 500,{.forwards=false},false);
+    chassis.moveToPoint(58, -62, 1000,{.forwards=false},false);
+    chassis.waitUntilDone();
+    clamp.set_value(false);
+    pros::delay(200);
+    chassis.moveToPoint(46, -47, 1000);
+    chassis.turnToPoint(46, -4, 800,{.forwards=false});
+    chassis.moveToPoint(46, -25, 1000,{.forwards=false,.minSpeed=127});
+    chassis.moveToPoint(46, -4, 600,{.forwards=false,.maxSpeed=40,.minSpeed=20});
+    chassis.waitUntilDone();
+
+
+
+
+    //pros::Task arm(armTask,NULL,"Arm Task");
+    chassis.setPose(46,-4,170);
+    clamp.set_value(true);
+    pros::delay(400);
+    conveyor.move(127);
+    fsintake.move(127);
+    chassis.turnToPoint(22, -25, 400);
+    chassis.moveToPoint(22, -25, 1000);
+    pros::delay(500);
+    chassis.turnToPoint(-48, 37, 600);
+    pros::delay(1500);
+    chassis.setPose(22,-25,315);
+    conveyor.move(0);
+    chassis.moveToPoint(-1, -1, 1000,{.maxSpeed=70,.minSpeed=70},false);
+    conveyor.move(127);
+    pros::delay(600);
+    conveyor.move(0);
+    chassis.moveToPoint(-26, 18, 800,{.maxSpeed=60,.minSpeed=60},false);
+    pros::delay(600);
+    conveyor.move(127);
+    pros::delay(200);
+    chassis.moveToPoint(-50, 34, 1000,{.maxSpeed=70,.minSpeed=70},false);
+    chassis.turnToPoint(-52, 55, 600,{},false);
+    chassis.moveToPoint(-52, 55, 1000,{.maxSpeed=40},false);
+    chassis.turnToPoint(-50, 40, 600,{.forwards=false});
+    chassis.moveToPoint(-50, 40, 600,{.forwards=false,.maxSpeed=80,.minSpeed=80},false);
+    chassis.turnToPoint(-60, 38, 1000,{},false);
+    chassis.moveToPoint(-60, 38, 1000,{.maxSpeed=50},false);
+    chassis.waitUntilDone();
+    pros::delay(200);
+    conveyor.move(0);
+    chassis.turnToPoint(-74, 54, 1100,{.forwards=false});
+    chassis.moveToPoint(-74, 54, 500,{.forwards=false});
+    chassis.waitUntilDone();
+    clamp.set_value(false);
+    chassis.setPose(-60, 58, 150);
+    pros::delay(400);
+    right_motors.move(127);
+    left_motors.move(127);
+    pros::delay(100);
+    right_motors.move(0);
+    left_motors.move(0);
+    pros::delay(200);
+    chassis.turnToPoint(-52,30,1000,{.forwards=false});
+    chassis.moveToPoint(-52, 30, 1000,{.forwards=false,.maxSpeed=50});
+    chassis.waitUntilDone();
+    chassis.waitUntilDone();
+    clamp.set_value(true);
+    pros::delay(400);
+    conveyor.move(127);
+    chassis.turnToPoint(-30, 43, 1000);
+    chassis.moveToPoint(-30, 43, 1000);
+    chassis.turnToPoint(-3, 36, 1000);
+    chassis.moveToPoint(-3, 36, 1000);
+    chassis.turnToPoint(-3, 54.5, 1000);
+    setArmPosition(34550);
+    chassis.moveToPoint(-3, 54.5, 1000);
+    chassis.waitUntilDone();
+    pros::delay(600);
+    conveyor.move(0);
+    pros::delay(100);
+    conveyor.move(127);
+    pros::delay(100);
+    conveyor.move(0);
+    pros::delay(100);
+    conveyor.move(127);
+    pros::delay(100);
+    conveyor.move(0);
+    pros::delay(100);
+    conveyor.move(127);
+    pros::delay(100);
+    conveyor.move(0);
+    pros::delay(100);
+    setArmPosition(22000);
+    pros::delay(600);
+    chassis.moveToPoint(-2, 46, 1000,{.forwards=false});
+    conveyor.move(127);
+    chassis.waitUntilDone();
+    setArmPosition(35850);
+    chassis.turnToPoint(24, 46, 1000);
+    chassis.moveToPoint(24, 46, 1000);
+    chassis.turnToPoint(24, 26, 1000);
+    chassis.moveToPoint(24, 26, 1000);
+    chassis.turnToPoint(42, 42, 1000);
+    chassis.moveToPoint(42, 42, 1000,{.maxSpeed=60});
+    chassis.turnToPoint(52, 45, 1000);
+    chassis.moveToPoint(52, 45, 1000);
+    chassis.turnToPoint(42, 42, 1000,{.forwards=false});
+    chassis.moveToPoint(42, 42, 1000,{.forwards=false});
+    chassis.turnToPoint(45, 52, 1000);
+    chassis.moveToPoint(45,52, 1000);
+    chassis.waitUntilDone();
+    pros::delay(200);
+    conveyor.move(0);
+    chassis.turnToPoint(57, 57, 1000,{.forwards=false});
+    chassis.moveToPoint(57, 57, 1000,{.forwards=false});
+    clamp.set_value(false);
+    pros::delay(400);
+    chassis.turnToPoint(38, 0, 1000);
+    chassis.moveToPoint(38, 0, 1000,{.minSpeed=127});
+    chassis.turnToPoint(58, 0, 1000,{.forwards=false});
+    chassis.moveToPoint(58, 0, 1000,{.forwards=false});
+
+
+
+
+
+
+   
+    while (true){
+        pros::delay(10);
+    }
+/*
+*/
+}  
+
+
+/**
+ * Runs the operator control code. This function will be started in its own task
+ * with the default priority and stack size whenever the robot is enabled via
+ * the Field Management System or the VEX Competition Switch in the operator
+ * control mode.
+ *
+ * If no competition control is connected, this function will run immediately
+ * following initialize().
+ *
+ * If the robot is disabled or communications is lost, the
+ * operator control task will be stopped. Re-enabling the robot will restart the
+ * task, not resume it from where it left off.
+ */
+ 
+void opcontrol() {
+    pros::lcd::initialize();
+    /*
+    arm.set_brake_mode(pros::E_MOTOR_BRAKE_HOLD);
+    pros::Task positiont(posGetTask, NULL, "Position Task");
+    pros::Task doinkert(doinkTask, NULL, "Doinker Task");
+    pros::Task drivet(driveTask, NULL, "Drive Task");
+    pros::Task conveyort(conveyorTask, NULL, "Conveyor Task");
+    pros::Task clampt(clampTask, NULL, "Clamp Task");
+    pros::Task intaket(intakeTask,NULL,"Intake Task");
+    pros::Task armt(armTask,NULL,"Arm Task");
+    */
+    // controller
+    // loop to continuously update motors
+    while (true) { // infinite loop
+        if (controller.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_A)){
+           
+            chassis.setBrakeMode(pros::E_MOTOR_BRAKE_BRAKE);
+            pros::Task arm(armTask,NULL,"Arm Task");
+            chassis.setPose(-60.5,0,270);
+            setArmPosition(22000);
+            pros::delay(600);
+            setArmPosition(35850);
+            chassis.moveToPoint(-46,0,700,{.forwards=false},false);
+            chassis.turnToPoint(-46, -17, 800,{.forwards=false,.minSpeed=40});
+            chassis.moveToPoint(-46, -17, 800,{.forwards=false,.maxSpeed=60,.minSpeed=40});
+            chassis.waitUntilDone();
+            clamp.set_value(true);          
+            pros::delay(400);
+            fsintake.move(127);
+            chassis.turnToPoint(-13.5, -32.6, 500);
+            conveyor.move(127);
+            chassis.moveToPoint(-13.5, -32.6, 1000,{.maxSpeed=85},false);
+            chassis.moveToPoint(20, -46.5, 1000,{.maxSpeed=85},false);
+            chassis.turnToPoint(45, -45, 350, {},false);
+            chassis.moveToPoint(45, -45, 800,{.maxSpeed=80},false);
+            pros::delay(100);
+            setArmPosition(34550);
+            chassis.turnToPoint(2, -40, 400,{.forwards=false});
+            chassis.moveToPoint(2, -40, 1200,{.forwards=false,.maxSpeed=127});
+            chassis.waitUntilDone();
+            chassis.turnToPoint(2, -56, 1000,{.maxSpeed=85});
+            conveyor.move(0);
+            pros::delay(100);
+            conveyor.move(127);
+            pros::delay(100);
+            conveyor.move(0);
+            pros::delay(100);
+            conveyor.move(127);
+            pros::delay(100);
+            conveyor.move(0);
+            pros::delay(100);
+            conveyor.move(127);
+            pros::delay(100);
+            conveyor.move(0);
+            pros::delay(200);
+            setArmPosition(30000);
+            pros::delay(100);
+            chassis.moveToPoint(2, -56, 1000,{.maxSpeed=80});
+            conveyor.move(127);
+            pros::delay(800); //adjust for stow
+            conveyor.move(0);
+            chassis.waitUntilDone();
+            setArmPosition(21000);
+            pros::delay(450);
+            chassis.moveToPoint(2,-48, 600,{.forwards=false});
+            pros::delay(300);
+            setArmPosition(34550);
+            pros::delay(500);
+            conveyor.move(127);
+            pros::delay(900);
+            conveyor.move(0);
+            pros::delay(100);
+            conveyor.move(127);
+            pros::delay(100);
+            conveyor.move(0);
+            pros::delay(100);
+            conveyor.move(127);
+            pros::delay(100);
+            conveyor.move(0);
+            chassis.moveToPoint(2,-56, 600,{.maxSpeed=80});
+            chassis.waitUntilDone();
+            setArmPosition(21000);
+            pros::delay(600);
+            conveyor.move(127);
+       
+            chassis.moveToPoint(2, -46, 1000,{.forwards=false});
+            chassis.waitUntilDone();
+            setArmPosition(35850);
+            chassis.turnToPoint(-30, -46, 500,{},false);
+            chassis.moveToPoint(-30, -46, 1500,{.maxSpeed=70,.minSpeed=70},false);
+            chassis.moveToPoint(-41, -46, 500,{.maxSpeed=40,.minSpeed=40},false);
+            chassis.turnToPoint(-34, -46, 500,{.forwards=false},false);
+            chassis.moveToPoint(-34, -46, 500,{.forwards=false,.maxSpeed=65,.minSpeed=65},false);
+            chassis.turnToPoint(-44, -54.5, 500,{},false);
+            chassis.moveToPoint(-44, -54.5, 600,{.maxSpeed=65,.minSpeed=65},false);
+            chassis.turnToPoint(-54, -48, 500,{},false);
+            chassis.moveToPoint(-54, -48, 600,{.maxSpeed=65,.minSpeed=65},false);
+            chassis.turnToPoint(-60,-58,500,{.forwards=false},false);
+            pros::delay(500);
+            chassis.moveToPoint(-60, -58, 500,{.forwards=false},false);
+            chassis.waitUntilDone();
+            clamp.set_value(false);
+            right_motors.move(127);
+            left_motors.move(127);
+            pros::delay(200);
+            chassis.turnToPoint(32,-57,800);
+            chassis.moveToPoint(32, -57, 2000,{.minSpeed=127});
+            conveyor.move(127);
+            chassis.moveToPoint(40, -57, 500,{.maxSpeed=70});
+            chassis.waitUntilDone();
+            pros::delay(200);
+            conveyor.move(0);
+            chassis.turnToPoint(40, -36, 600,{.forwards=false});
+            chassis.moveToPoint(40, -36, 700,{.forwards=false});
+            chassis.turnToPoint(52, -26, 600,{.forwards=false});
+            chassis.moveToPoint(52, -26, 800,{.forwards=false,.maxSpeed=60});
+            chassis.waitUntilDone();
+            clamp.set_value(true);
+            pros::delay(400);
+            chassis.turnToPoint(43, -52, 1000,{},false);
+            chassis.moveToPoint(43, -52, 1000,{},false);
+            chassis.turnToPoint(58, -62, 1000,{.forwards=false},false);
+            chassis.moveToPoint(58, -62, 1000,{.forwards=false},false);
+            chassis.waitUntilDone();
+            clamp.set_value(false);
+            pros::delay(200);
+            chassis.moveToPoint(46, -47, 1000);
+            chassis.turnToPoint(46, -4, 800,{.forwards=false});
+            chassis.moveToPoint(46, -25, 1000,{.forwards=false,.minSpeed=127});
+            chassis.moveToPoint(46, -4, 600,{.forwards=false,.maxSpeed=40,.minSpeed=20});
+            chassis.waitUntilDone();
+       
+       
+            //pros::Task arm(armTask,NULL,"Arm Task");
+            chassis.setPose(46,-4,170);
+            clamp.set_value(true);
+            pros::delay(400);
+            conveyor.move(127);
+            fsintake.move(127);
+            chassis.turnToPoint(22, -25, 400);
+            chassis.moveToPoint(22, -25, 1000);
+            pros::delay(500);
+            chassis.turnToPoint(-48, 37, 600);
+            pros::delay(1500);
+            chassis.setPose(22,-25,315);
+            conveyor.move(0);
+            chassis.moveToPoint(-1, -1, 1000,{.maxSpeed=70,.minSpeed=70},false);
+            conveyor.move(127);
+            pros::delay(600);
+            conveyor.move(0);
+            chassis.moveToPoint(-26, 18, 800,{.maxSpeed=60,.minSpeed=60},false);
+            pros::delay(600);
+            conveyor.move(127);
+            pros::delay(200);
+            chassis.moveToPoint(-50, 34, 1000,{.maxSpeed=70,.minSpeed=70},false);
+            chassis.turnToPoint(-52, 55, 600,{},false);
+            chassis.moveToPoint(-52, 55, 1000,{.maxSpeed=40},false);
+            chassis.turnToPoint(-50, 40, 600,{.forwards=false});
+            chassis.moveToPoint(-50, 40, 600,{.forwards=false,.maxSpeed=80,.minSpeed=80},false);
+            chassis.turnToPoint(-60, 38, 1000,{},false);
+            chassis.moveToPoint(-60, 38, 1000,{.maxSpeed=50},false);
+            chassis.waitUntilDone();
+            pros::delay(200);
+            conveyor.move(0);
+            chassis.turnToPoint(-74, 54, 1100,{.forwards=false});
+            chassis.moveToPoint(-74, 54, 500,{.forwards=false});
+            chassis.waitUntilDone();
+            clamp.set_value(false);
+            chassis.setPose(-60, 58, 150);
+            pros::delay(400);
+            right_motors.move(127);
+            left_motors.move(127);
+            pros::delay(100);
+            right_motors.move(0);
+            left_motors.move(0);
+            pros::delay(200);
+            chassis.turnToPoint(-52,30,1000,{.forwards=false});
+            chassis.moveToPoint(-52, 30, 1000,{.forwards=false,.maxSpeed=50});
+            chassis.waitUntilDone();
+            chassis.waitUntilDone();
+            clamp.set_value(true);
+            pros::delay(400);
+            conveyor.move(127);
+            chassis.turnToPoint(-30, 43, 1000);
+            chassis.moveToPoint(-30, 43, 1000);
+            chassis.turnToPoint(-3, 36, 1000);
+            chassis.moveToPoint(-3, 36, 1000);
+            chassis.turnToPoint(-3, 54.5, 1000);
+            setArmPosition(34550);
+            chassis.moveToPoint(-3, 54.5, 1000);
+            chassis.waitUntilDone();
+            pros::delay(600);
+            conveyor.move(0);
+            pros::delay(100);
+            conveyor.move(127);
+            pros::delay(100);
+            conveyor.move(0);
+            pros::delay(100);
+            conveyor.move(127);
+            pros::delay(100);
+            conveyor.move(0);
+            pros::delay(100);
+            conveyor.move(127);
+            pros::delay(100);
+            conveyor.move(0);
+            pros::delay(100);
+            setArmPosition(22000);
+            pros::delay(600);
+            chassis.moveToPoint(-2, 46, 1000,{.forwards=false});
+            conveyor.move(127);
+            chassis.waitUntilDone();
+            setArmPosition(35850);
+            chassis.turnToPoint(24, 46, 1000);
+            chassis.moveToPoint(24, 46, 1000);
+            chassis.turnToPoint(24, 26, 1000);
+            chassis.moveToPoint(24, 26, 1000);
+            chassis.turnToPoint(42, 42, 1000);
+            chassis.moveToPoint(42, 42, 1000,{.maxSpeed=60});
+            chassis.turnToPoint(52, 45, 1000);
+            chassis.moveToPoint(52, 45, 1000);
+            chassis.turnToPoint(42, 42, 1000,{.forwards=false});
+            chassis.moveToPoint(42, 42, 1000,{.forwards=false});
+            chassis.turnToPoint(45, 52, 1000);
+            chassis.moveToPoint(45,52, 1000);
+            chassis.waitUntilDone();
+            pros::delay(200);
+            conveyor.move(0);
+            chassis.turnToPoint(57, 57, 1000,{.forwards=false});
+            chassis.moveToPoint(57, 57, 1000,{.forwards=false});
+            clamp.set_value(false);
+            pros::delay(400);
+            chassis.turnToPoint(38, 0, 1000);
+            chassis.moveToPoint(38, 0, 1000,{.minSpeed=127});
+            chassis.turnToPoint(58, 0, 1000,{.forwards=false});
+            chassis.moveToPoint(58, 0, 1000,{.forwards=false});
+                }
+        pros::delay(10);
+        // print measurements from the adi encoder
+    }
+}  
+
