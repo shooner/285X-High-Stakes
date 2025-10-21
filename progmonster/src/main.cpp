@@ -157,6 +157,12 @@ void motorControl(void* param) {
 
 void opcontrol(){
 	pros::lcd::initialize();
+    pros::vision_signature_s_t BLUE_SIGNATURE =
+    pros::Vision::signature_from_utility (BLUE_SIG, -3461, -2881, -3172, 5123, 6215, 5668, 3.0, 0); 
+    pros::vision_signature_s_t RED_SIGNATURE =
+    pros::Vision::signature_from_utility(RED_SIG, 9843, 12289, 11066, -1681, -891, -1286, 3.0, 0);
+    vision_sensor.set_signature (BLUE_SIG, &BLUE_SIGNATURE);
+    vision_sensor.set_signature (RED_SIG, &RED_SIGNATURE);
 	pros::Task basketTask (toggleBasket, NULL, "Basket Task");
 	pros::Task scraperTask (toggleScraper, NULL, "Scraper Task");
 	pros::Task motorControlTask (motorControl, NULL, "Motor Control Task");
