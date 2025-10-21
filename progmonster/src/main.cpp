@@ -128,7 +128,7 @@ void motorControl(void* param) {
         if (controller.get_digital(pros::E_CONTROLLER_DIGITAL_R2)){
 			// Intake               
 			if(basket==2){
-				onetwo_motor.move(127);
+				onetwo_motor.move(-127);
 				threefour_motor.move(127);
 				five_motor.move(127);
 				six_motor.move(-127);
@@ -148,9 +148,9 @@ void motorControl(void* param) {
 				six_motor.move(0);
 			} else if(basket==2){
 				six_motor.move(127);
-				onetwo_motor.move(-127);
+				onetwo_motor.move(127);
 				threefour_motor.move(-127);
-				five_motor.move(-127);
+				five_motor.move(0);
         	}
     	}
         else if (controller.get_digital(pros::E_CONTROLLER_DIGITAL_R1)){
@@ -158,13 +158,13 @@ void motorControl(void* param) {
             if(basket==1){
 				five_motor.move(127);
 				threefour_motor.move(127);
-				onetwo_motor.move(-127);
+				onetwo_motor.move(127);
 				six_motor.move(0);
 			}
 			else if(basket==2){
 				six_motor.move(127);
 				threefour_motor.move(127);
-				onetwo_motor.move(-127);
+				onetwo_motor.move(127);
 				five_motor.move(0);
 			}
 		}
@@ -173,12 +173,12 @@ void motorControl(void* param) {
             if(basket==1){
                 five_motor.move(127);
                 threefour_motor.move(127);
-                onetwo_motor.move(127);
+                onetwo_motor.move(-127);
 				six_motor.move(0);
             }
             else if(basket==2){
                 six_motor.move(127);
-                onetwo_motor.move(127);
+                onetwo_motor.move(-127);
 				threefour_motor.move(0);
 				five_motor.move(0);
             }
