@@ -94,8 +94,7 @@ static bool detect_signature (pros:: Vision& vision, std::uint8_t sig_id, int mi
 
 void toggleBasket(void* param){
     while(true){
-        if(controller.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_L1)){
-			controller.clear_line(0);
+        if(controller.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_X)){
             if(basket==1){
                 basket = 2;
                 controller.print(0, 0, "Top Basket");
@@ -114,7 +113,7 @@ void toggleBasket(void* param){
  void toggleScraper(void* param) {
     bool scraper_engaged = false;
     while (true) {
-        if (controller.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_L2)) {
+        if (controller.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_Y)) {
             scraper_engaged = !scraper_engaged;  // Toggle scraper
             scraper.set_value(scraper_engaged);
             pros::delay(200);               // Prevent rapid toggling
@@ -126,27 +125,21 @@ void toggleBasket(void* param){
 
 void motorControl(void* param) {
 	while (true) {
-        if (controller.get_digital(pros::E_CONTROLLER_DIGITAL_R1)){
-			// Color sorted intake
-            static bool last_red = false;
-            static bool last_blue = false;
-            bool red_present = detect_signature (vision_sensor, RED_SIG);
-            bool blue_present = detect_signature (vision_sensor, BLUE_SIG);
-            if (red_present != last_red) {
-                onetwo_motor.move(-127);
+        if (controller.get_digital(pros::E_CONTROLLER_DIGITAL_R2)){
+			// Intake               
+			if(basket==2){
+				onetwo_motor.move(127);
 				threefour_motor.move(127);
-				five_motor.move(0);
+				five_motor.move(127);
 				six_motor.move(-127);
-                last_red = red_present;
-            }
-            if (blue_present != last_blue) {
-                threefour_motor.move(127);
+			} else if (basket==1){
+				threefour_motor.move(127);
             	five_motor.move(-127);
 				onetwo_motor.move(0);
 				six_motor.move(0);
-            } //Changes depending on our color
-        }
-        else if (controller.get_digital(pros::E_CONTROLLER_DIGITAL_B)){
+			}
+        } 
+        else if (controller.get_digital(pros::E_CONTROLLER_DIGITAL_L1)){
 			// Outtake center lower
 			if(basket==1){
 				threefour_motor.move(-127);
@@ -160,7 +153,7 @@ void motorControl(void* param) {
 				five_motor.move(-127);
         	}
     	}
-        else if (controller.get_digital(pros::E_CONTROLLER_DIGITAL_X)){
+        else if (controller.get_digital(pros::E_CONTROLLER_DIGITAL_R1)){
 			// Outtake center upper
             if(basket==1){
 				five_motor.move(127);
@@ -175,7 +168,7 @@ void motorControl(void* param) {
 				five_motor.move(0);
 			}
 		}
-        else if (controller.get_digital(pros::E_CONTROLLER_DIGITAL_Y)){
+        else if (controller.get_digital(pros::E_CONTROLLER_DIGITAL_L2)){
 			// Outtake long goal
             if(basket==1){
                 five_motor.move(127);
