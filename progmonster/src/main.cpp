@@ -1,15 +1,17 @@
 //10-19-2025
 
+
 #include "lemlib/api.hpp" // IWYU pragma: keep
 #include "main.h"
 #define RED_SIG 1
 #define BLUE_SIG 2
 #define VISION_PORT 2
 
+
 pros::Motor onetwo_motor(19, pros::MotorGearset::green);
-pros::Motor threefour_motor(17, pros::MotorGearset::green); 
-pros::Motor five_motor(3, pros::MotorGearset::green); 
-pros::Motor six_motor(2, pros::MotorGearset::green); 
+pros::Motor threefour_motor(17, pros::MotorGearset::green);
+pros::Motor five_motor(3, pros::MotorGearset::green);
+pros::Motor six_motor(2, pros::MotorGearset::green);
 int basket = 1; //1 is lower, 2 is upper
 pros::Controller controller(pros::E_CONTROLLER_MASTER);
 pros::ADIPort scraper('A', pros::E_ADI_DIGITAL_OUT);
@@ -17,6 +19,7 @@ pros::Vision vision_sensor (VISION_PORT);
 pros::MotorGroup left_motors({ 1, 1,1}, pros::MotorGearset::blue); // left motors on ports 1, 2, 3
 pros::MotorGroup right_motors({1, 1, 1}, pros::MotorGearset::blue); // right motors on ports 4, 5, 6  
 pros::Rotation vertical(20);
+
 
 lemlib::Drivetrain drivetrain(&left_motors, // left motor group
                               &right_motors, // right motor group
@@ -26,8 +29,10 @@ lemlib::Drivetrain drivetrain(&left_motors, // left motor group
                               2 // horizontal drift is 2
 );
 
+
 lemlib::TrackingWheel vertical_wheel(&vertical, lemlib::Omniwheel::NEW_275, 0);
 pros::Imu imu(10);
+
 
 lemlib::OdomSensors sensors(&vertical_wheel, // vertical tracking wheel 1, set to null
                             nullptr, // vertical tracking wheel 2, set to nullptr as we are using IMEs
@@ -35,6 +40,8 @@ lemlib::OdomSensors sensors(&vertical_wheel, // vertical tracking wheel 1, set t
                             nullptr, // horizontal tracking wheel 2, set to nullptr as we don't have a second one
                             &imu // inertial sensor
 );
+
+
 
 
 lemlib::ControllerSettings lateral_controller(12, // proportional gain (kP)
@@ -59,10 +66,13 @@ lemlib::ControllerSettings angular_controller(8 , // proportional gain (kP)
                                               0 // maximum acceleration (slew)
 );
 
+
 lemlib::ExpoDriveCurve throttle_curve(20, // joystick deadband out of 127
                                      20, // minimum output where drivetrain will move out of 127
                                      1.038 // expo curve gain
 );
+
+
 
 
 // input curve for steer input during driver control
@@ -70,6 +80,9 @@ lemlib::ExpoDriveCurve steer_curve(20, // joystick deadband out of 127
                                   20, // minimum output where drivetrain will move out of 127
                                   1.048 // expo curve gain
 );
+
+
+
 
 
 
@@ -81,6 +94,7 @@ lemlib::Chassis chassis(drivetrain,
                         &steer_curve
 );
 
+
 static bool detect_signature (pros:: Vision& vision, std::uint8_t sig_id, int min_w = 6, int min_h = 6) {
     pros::vision_object_s_t objs[1];
     int32_t copied = vision.read_by_sig(0, sig_id, 1, objs);
@@ -88,7 +102,7 @@ static bool detect_signature (pros:: Vision& vision, std::uint8_t sig_id, int mi
     const auto& obj = objs[0];
     if (obj.signature == VISION_OBJECT_ERR_SIG) return false;
     if (obj.signature != sig_id) return false;
-    // Filter out noise by requiring minimum size 
+    // Filter out noise by requiring minimum size
     return obj.width >= min_w && obj.height >= min_h;
 }
 
@@ -126,19 +140,20 @@ void toggleBasket(void* param){
 void motorControl(void* param) {
 	while (true) {
         if (controller.get_digital(pros::E_CONTROLLER_DIGITAL_R2)){
-			// Intake               
-			if(basket==2){
-				onetwo_motor.move(-127);
-				threefour_motor.move(127);
-				five_motor.move(127);
-				six_motor.move(-127);
-			} else if (basket==1){
-				threefour_motor.move(127);
-            	five_motor.move(-127);
-				onetwo_motor.move(0);
-				six_motor.move(0);
-			}
-        } 
+            // Intake
+            bool blue_present = detect_signature (vision_sensor, BLUE_SIG);
+            bool red_present = detect_signature (vision_sensor, RED_SIG);
+            threefour_motor.move(127);
+            if(red_present!=false){
+                onetwo_motor.move(-127);
+                five_motor.move(127);
+                six_motor.move(-127);
+            } else if (blue_present!=false){
+                five_motor.move(-127);
+                onetwo_motor.move(0);
+                six_motor.move(0);
+            }
+        }
         else if (controller.get_digital(pros::E_CONTROLLER_DIGITAL_L1)){
 			// Outtake center lower
 			if(basket==1){
