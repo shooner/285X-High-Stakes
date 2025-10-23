@@ -246,55 +246,53 @@ void autonomous() {
     int a = -1;
     int b = 1;
 
-    //negative side auton
-    /*
-    chassis.setPose(-51.75,18,135);
-    doinker.set_value(true);
-    pros::delay(250);
-    chassis.turnToPoint(-51.75, 0, 1000,{.forwards=false, .maxSpeed=(50)});
-    chassis.waitUntilDone();
-    doinker.set_value(false);
-    chassis.moveToPoint(-51.75, 0, 1000,{.forwards=false});
-    chassis.turnToPoint(-57, 0, 500,{.forwards=false});
-    chassis.moveToPoint(-57, 0, 1250);
-    pros::delay(500);
-    conveyor.move(127);
-    /*
-    */
-
-
-//final skills
-
-
- // start of bonus route
 
     chassis.setBrakeMode(pros::E_MOTOR_BRAKE_BRAKE);
-    chassis.setPose(a*51.141, b*10.641, 67);
+    chassis.setPose(a*65.25, b*13.198, 12);
 
-    chassis.turnToPoint(a*23.3, b*22.95, 500);
-    chassis.moveToPoint(a*23.3, b*22.95, 800);
-    pros::delay(1400);
+    chassis.turnToPoint(a*59, b*35, 1000);
+    chassis.moveToPoint(a*59, b*35, 1000);
 
-    chassis.turnToPoint(a*3.923, b*47.494, 500);
-    chassis.moveToPoint(a*3.923, b*47.494, 800);
-    pros::delay(900);
+    //intake 3 from drop loader
 
-    chassis.turnToPoint(a*20.8, b*36.5, 500);
-    chassis.moveToPoint(a*20.8, b*36.5, 800);
-    pros::delay(300);
+    chassis.turnToPoint(a*58.818, b*46.72, 1000);
+    chassis.moveToPoint(a*58.818, b*46.72, 1000);
+    chassis.turnToHeading(-90, 1000);
+    scraper.set_value(true);   //engage scraper
+    convAuton(1, 0);
+    pros::delay(500);
+    chassis.moveToPoint(a*66.88, 46.72, 1000);
+    pros::delay(500);
+    chassis.moveToPoint(a*58.818, b*46.72, 1000);
+    scraper.set_value(false);  //disengage scraper
 
-    chassis.turnToPoint(a*65.7, b*46.1, 500);
-    chassis.moveToPoint(a*65.7, b*46.1, 800);
-    pros::delay(1200);
+    chassis.turnToPoint(a*42.5, b*45.95, 1000);
+    chassis.moveToPoint(a*42.5, b*45.95, 1000);
 
-    chassis.turnToPoint(a*25.8, b*46.3, 500);
-    chassis.moveToPoint(a*25.8, b*46.3, 800);
+    chassis.turnToPoint(a*22.54, b*22.35, 1000);
+    chassis.moveToPoint(a*22.54, b*22.35, 1000);
 
+    chassis.turnToPoint(a*8.14, b*9.10, 1000);
+    chassis.moveToPoint(a*8.14, b*9.10, 1000);
 
+    //dump onto lower mid
+    convAuton(1, 1);
+    pros::delay(500);
+    convOff();
 
-    //chassis.turnToPoint(-46, -17, 800,{.forwards=false,.minSpeed=40});
-    //chassis.moveToPoint(-46, -17, 800,{.forwards=false,.maxSpeed=60,.minSpeed=40});
+    chassis.moveToPoint(a*22.54, b*22.35, 1000);
 
+    chassis.turnToPoint(a*23.309, a*22.373, 1000);
+    convAuton(1, 0);
+    chassis.moveToPoint(a*23.309, a*22.373, 1000);
+    convOff();
+
+    chassis.turnToPoint(a*9.61, a*8.36, 1000);
+    chassis.moveToPoint(a*9.61, a*8.36, 1000);
+
+    convAuton(1, 2);
+    pros::delay(500);
+    convOff();
 
 
 
