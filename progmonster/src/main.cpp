@@ -5,7 +5,7 @@
 #include "main.h"
 #define RED_SIG 1
 #define BLUE_SIG 2
-#define VISION_PORT 2
+#define VISION_PORT 12
 
 
 pros::Motor onetwo_motor(19, pros::MotorGearset::green);
@@ -103,7 +103,7 @@ static bool detect_signature (pros:: Vision& vision, std::uint8_t sig_id, int mi
     if (obj.signature == VISION_OBJECT_ERR_SIG) return false;
     if (obj.signature != sig_id) return false;
     // Filter out noise by requiring minimum size
-    return obj.width >= min_w && obj.height >= min_h;
+    return (obj.width >= min_w && obj.height >= min_h);
 }
 
 void toggleBasket(void* param){
@@ -138,21 +138,36 @@ void toggleBasket(void* param){
 }
 
 void motorControl(void* param) {
+    bool last_blue = false;
+    bool last_red = false;
 	while (true) {
         if (controller.get_digital(pros::E_CONTROLLER_DIGITAL_R2)){
-            // Intake
-            bool blue_present = detect_signature (vision_sensor, BLUE_SIG);
-            bool red_present = detect_signature (vision_sensor, RED_SIG);
-            threefour_motor.move(127);
-            if(red_present!=false){
+            // Intake with color sorting
+            bool blue_present = detect_signature(vision_sensor, BLUE_SIG);
+            bool red_present = detect_signature(vision_sensor, RED_SIG);
+
+        
+            threefour_motor.move(127);  // Always intake
+            if (red_present){
+                last_red = true;
+                last_blue = false;
+            }
+
+            if(blue_present){
+                last_blue = true;
+                last_red = false;
+            }
+            if(last_red){
                 onetwo_motor.move(-127);
-                five_motor.move(127);
+                five_motor.move(0);
                 six_motor.move(-127);
-            } else if (blue_present!=false){
+            } if (last_blue){
                 five_motor.move(-127);
                 onetwo_motor.move(0);
                 six_motor.move(0);
-            }
+            } 
+            pros::lcd::set_text(2, last_red ? "Red Detected" : "No Red");
+            pros::lcd::set_text(3, last_blue ? "Blue Detected" : "No Blue");
         }
         else if (controller.get_digital(pros::E_CONTROLLER_DIGITAL_L1)){
 			// Outtake center lower
