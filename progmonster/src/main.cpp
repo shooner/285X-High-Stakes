@@ -5,21 +5,22 @@
 #include "main.h"
 #define RED_SIG 1
 #define BLUE_SIG 2
-#define VISION_PORT 12
+#define VISION_PORT 20
 
 
-pros::Motor onetwo_motor(19, pros::MotorGearset::green);
-pros::Motor threefour_motor(17, pros::MotorGearset::green);
+pros::Motor onetwo_motor(4, pros::MotorGearset::green);
+pros::Motor threefour_motor(5, pros::MotorGearset::green);
 pros::Motor five_motor(3, pros::MotorGearset::green);
 pros::Motor six_motor(2, pros::MotorGearset::green);
 int basket = 1; //1 is lower, 2 is upper
 pros::Controller controller(pros::E_CONTROLLER_MASTER);
 pros::ADIPort scraper('A', pros::E_ADI_DIGITAL_OUT);
 pros::Vision vision_sensor (VISION_PORT);
-pros::MotorGroup left_motors({ 1, 1,1}, pros::MotorGearset::blue); // left motors on ports 1, 2, 3
-pros::MotorGroup right_motors({1, 1, 1}, pros::MotorGearset::blue); // right motors on ports 4, 5, 6  
-pros::Rotation vertical(20);
-
+pros::MotorGroup left_motors({11, 12,13}, pros::MotorGearset::blue); // left motors on ports 1, 2, 3
+pros::MotorGroup right_motors({6, 7, 8}, pros::MotorGearset::blue); // right motors on ports 4, 5, 6  
+pros::Rotation vertical(14);
+pros::Rotation horizontal(15);
+pros::Imu imu(10);
 
 lemlib::Drivetrain drivetrain(&left_motors, // left motor group
                               &right_motors, // right motor group
@@ -31,12 +32,11 @@ lemlib::Drivetrain drivetrain(&left_motors, // left motor group
 
 
 lemlib::TrackingWheel vertical_wheel(&vertical, lemlib::Omniwheel::NEW_275, 0);
-pros::Imu imu(10);
-
+lemlib::TrackingWheel horizontal_wheel(&horizontal, lemlib::Omniwheel::NEW_275, 0);
 
 lemlib::OdomSensors sensors(&vertical_wheel, // vertical tracking wheel 1, set to null
                             nullptr, // vertical tracking wheel 2, set to nullptr as we are using IMEs
-                            nullptr, // horizontal tracking wheel 1
+                            &horizontal_wheel, // horizontal tracking wheel 1
                             nullptr, // horizontal tracking wheel 2, set to nullptr as we don't have a second one
                             &imu // inertial sensor
 );
@@ -138,7 +138,7 @@ void toggleBasket(void* param){
 }
 
 void motorControl(void* param) {
-    bool last_blue = false;
+    bool last_blue = true;
     bool last_red = false;
 	while (true) {
         if (controller.get_digital(pros::E_CONTROLLER_DIGITAL_R2)){
