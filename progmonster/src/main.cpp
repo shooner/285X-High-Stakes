@@ -12,16 +12,17 @@ pros::Motor onetwo_motor(4, pros::MotorGearset::green);
 pros::Motor threefour_motor(5, pros::MotorGearset::green);
 pros::Motor five_motor(3, pros::MotorGearset::green);
 pros::Motor six_motor(2, pros::MotorGearset::green);
-int basket = 1; //1 is lower, 2 is upper
 pros::Controller controller(pros::E_CONTROLLER_MASTER);
 pros::ADIPort scraper('A', pros::E_ADI_DIGITAL_OUT);
 pros::Vision vision_sensor (VISION_PORT);
-pros::MotorGroup left_motors({11, 12,13}, pros::MotorGearset::blue); // left motors on ports 1, 2, 3
-pros::MotorGroup right_motors({6, 7, 8}, pros::MotorGearset::blue); // right motors on ports 4, 5, 6  
+pros::MotorGroup left_motors({-16, 12,-13}, pros::MotorGearset::blue); // left motors on ports 1, 2, 3
+pros::MotorGroup right_motors({6, -7, 8}, pros::MotorGearset::blue); // right motors on ports 4, 5, 6  
 pros::Rotation vertical(14);
-pros::Rotation horizontal(15);
+pros::Rotation horizontal(-15);
 pros::Imu imu(10);
-
+int basket = 1; // 1 is bottom, 2 is top
+int aut_height = 0;
+int aut_basket = 0;
 lemlib::Drivetrain drivetrain(&left_motors, // left motor group
                               &right_motors, // right motor group
                               13, // 12.5 inch track width
@@ -31,8 +32,8 @@ lemlib::Drivetrain drivetrain(&left_motors, // left motor group
 );
 
 
-lemlib::TrackingWheel vertical_wheel(&vertical, lemlib::Omniwheel::NEW_275, 0);
-lemlib::TrackingWheel horizontal_wheel(&horizontal, lemlib::Omniwheel::NEW_275, 0);
+lemlib::TrackingWheel vertical_wheel(&vertical, lemlib::Omniwheel::NEW_2, -1.5);
+lemlib::TrackingWheel horizontal_wheel(&horizontal, lemlib::Omniwheel::NEW_2, -2.5);
 
 lemlib::OdomSensors sensors(&vertical_wheel, // vertical tracking wheel 1, set to null
                             nullptr, // vertical tracking wheel 2, set to nullptr as we are using IMEs
@@ -141,6 +142,10 @@ void motorControl(void* param) {
     bool last_blue = true;
     bool last_red = false;
 	while (true) {
+        six_motor.move(0);
+			onetwo_motor.move(0);
+			threefour_motor.move(0);
+			five_motor.move(0);
         if (controller.get_digital(pros::E_CONTROLLER_DIGITAL_R2)){
             // Intake with color sorting
             bool blue_present = detect_signature(vision_sensor, BLUE_SIG);
@@ -221,9 +226,119 @@ void motorControl(void* param) {
 			five_motor.move(0);
         }
         pros::delay(20);
+         
     }
 }
 
+void drive(void* param) {
+    while (true) {
+        // Use controller joysticks to drive
+        double forward = controller.get_analog(pros::E_CONTROLLER_ANALOG_LEFT_Y);
+        double turn = controller.get_analog(pros::E_CONTROLLER_ANALOG_RIGHT_X);
+        chassis.arcade(forward, turn);
+        pros::delay(20);
+    }
+}
+
+void convState(int b, int h){
+	aut_height = h;
+	aut_basket = b;
+}
+void convAuton(void* param) {
+    bool last_red=false;
+    bool last_blue=true;
+    while(true){
+        if (aut_height == 0){
+            // Intake with color sorting
+            bool blue_present = detect_signature(vision_sensor, BLUE_SIG);
+            bool red_present = detect_signature(vision_sensor, RED_SIG);
+        
+            threefour_motor.move(127);  // Always intake
+            if (red_present){
+                last_red = true;
+                last_blue = false;
+            }
+
+            if(blue_present){
+                last_blue = true;
+                last_red = false;
+            }
+            if(last_red){
+                onetwo_motor.move(-127);
+                five_motor.move(0);
+                six_motor.move(-127);
+            } if (last_blue){
+                five_motor.move(-127);
+                onetwo_motor.move(0);
+                six_motor.move(0);
+            } 
+            pros::lcd::set_text(2, last_red ? "Red Detected" : "No Red");
+            pros::lcd::set_text(3, last_blue ? "Blue Detected" : "No Blue");
+        }
+        else if (aut_height == 1){
+            // Outtake center lower
+            if(aut_basket==1){
+                threefour_motor.move(-127);
+                five_motor.move(127);
+                onetwo_motor.move(0);
+                six_motor.move(0);
+            } else if(aut_basket==2){
+                six_motor.move(127);
+                onetwo_motor.move(127);
+                threefour_motor.move(-127);
+                five_motor.move(0);
+            }
+        }
+        else if (aut_height==2){
+            // Outtake center upper
+            if(aut_basket==1){
+                five_motor.move(127);
+                threefour_motor.move(127);
+                onetwo_motor.move(127);
+                six_motor.move(0);
+            } else if(aut_basket==2){
+                six_motor.move(127);
+                threefour_motor.move(127);
+                onetwo_motor.move(127);
+                five_motor.move(0);
+            }
+        }
+        else if (aut_height==3){
+            // Outtake long goal
+            if(aut_basket==1){
+                five_motor.move(127);
+                threefour_motor.move(127);
+                onetwo_motor.move(-127);
+                six_motor.move(0);
+            }
+            else if(aut_basket==2){
+                six_motor.move(127);
+                onetwo_motor.move(-127);
+                threefour_motor.move(0);
+                five_motor.move(0);
+            }
+        }
+        else if (aut_height==-1){
+        	six_motor.move(0);
+            onetwo_motor.move(0);
+            threefour_motor.move(0);
+            five_motor.move(0);
+        }   
+        pros::delay(20);
+    }
+}
+
+
+
+void initialize() {
+    pros::lcd::initialize(); // initialize brain screen
+    while (true) { // infinite loop 
+        // print measurements from the rotation sensor
+        pros::lcd::print(1, "Rotation Sensor: %i", vertical.get_position());
+        pros::lcd::print(2, "Rotation Sensor: %i", horizontal.get_position());
+        pros::delay(10); // delay to save resources. DO NOT REMOVE
+    }
+}
 void opcontrol(){
 	pros::lcd::initialize();
     pros::vision_signature_s_t BLUE_SIGNATURE =
@@ -235,6 +350,7 @@ void opcontrol(){
 	pros::Task basketTask (toggleBasket, NULL, "Basket Task");
 	pros::Task scraperTask (toggleScraper, NULL, "Scraper Task");
 	pros::Task motorControlTask (motorControl, NULL, "Motor Control Task");
+    pros::Task driveTask (drive, NULL, "Drive Task");
 	while(true){
 		pros::delay(20);
 	}
@@ -242,10 +358,11 @@ void opcontrol(){
 }
 
 void autonomous() {
-
+    aut_height = 0;
+    aut_basket = 1;
     int a = -1;
     int b = 1;
-
+    pros::Task convTask (convAuton, NULL, "Conveyor Task");
 
     chassis.setBrakeMode(pros::E_MOTOR_BRAKE_BRAKE);
     chassis.setPose(a*65.25, b*13.198, 12);
@@ -259,7 +376,7 @@ void autonomous() {
     chassis.moveToPoint(a*58.818, b*46.72, 1000);
     chassis.turnToHeading(-90, 1000);
     scraper.set_value(true);   //engage scraper
-    convAuton(1, 0);
+    convState(1, 0);
     pros::delay(500);
     chassis.moveToPoint(a*66.88, 46.72, 1000);
     pros::delay(500);
@@ -276,29 +393,29 @@ void autonomous() {
     chassis.moveToPoint(a*8.14, b*9.10, 1000);
 
     //dump onto lower mid
-    convAuton(1, 1);
+    convState(1, 1);
     pros::delay(500);
-    convOff();
+    convState(0, -1);
 
     chassis.moveToPoint(a*22.54, b*22.35, 1000);
 
     chassis.turnToPoint(a*23.309, a*22.373, 1000);
-    convAuton(1, 0);
+    convState(1, 0);
     chassis.moveToPoint(a*23.309, a*22.373, 1000);
-    convOff();
+    convState(0,-1);
 
     chassis.turnToPoint(a*9.61, a*8.36, 1000);
     chassis.moveToPoint(a*9.61, a*8.36, 1000);
 
-    convAuton(1, 2);
+    convState(1, 2);
     pros::delay(500);
-    convOff();
+    convState(0, -1);
 
 
 
 
     while (true){
-        pros::delay(10);
+        pros::delay(20);
     }
 }
 
