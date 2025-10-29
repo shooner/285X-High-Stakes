@@ -156,7 +156,7 @@ void toggleBasket(void* param){
             scraper.set_value(scraper_engaged);
             pros::delay(200);               // Prevent rapid toggling
         }
-
+        
 
         pros::delay(20);
     }
@@ -174,8 +174,6 @@ void motorControl(void* param) {
         last_blue=true;
     }
     while (true) {
-        
-
 
         if (controller.get_digital(pros::E_CONTROLLER_DIGITAL_R2)){
             pros::delay(20);
@@ -189,7 +187,7 @@ void motorControl(void* param) {
                 last_red = true;
                 last_blue = false;
             }
-
+            
 
             if(blue_present){
                 last_blue = true;
@@ -199,9 +197,11 @@ void motorControl(void* param) {
             if (teamColor == 1){
                 last_yours = last_red;
             }
+            
             if (teamColor == 2){
                 last_yours=last_blue;
             }
+                
            
             if(!last_yours){
                 onetwo_motor.move(-127);
@@ -550,6 +550,7 @@ void opcontrol(){
 
     pros::lcd::initialize();
     chassis.setBrakeMode(pros::E_MOTOR_BRAKE_COAST);
+    pros::Task motorControlTask (motorControl, NULL, "Motor Control Task");
     pros::vision_signature_s_t BLUE_SIGNATURE =
     pros::Vision::signature_from_utility (BLUE_SIG, -3461, -2881, -3172, 5123, 6215, 5668, 3.0, 0);
     pros::vision_signature_s_t RED_SIGNATURE =
@@ -558,34 +559,27 @@ void opcontrol(){
     vision_sensor.set_signature (RED_SIG, &RED_SIGNATURE);
     pros::Task basketTask (toggleBasket, NULL, "Basket Task");
     pros::Task scraperTask (toggleScraper, NULL, "Scraper Task");
-    pros::Task motorControlTask (motorControl, NULL, "Motor Control Task");
+    
     pros::Task driveTask (drive, NULL, "Drive Task");
     while(true){
+        if (motorControlTask.get_state() == pros::E_TASK_STATE_RUNNING) {
+            pros::lcd::set_text(4, "a");
+        } else {
+        pros::lcd::set_text(4, "b");
+        }
         pros::delay(20);
     }
 
-
-
-    
-    while(true){
-        pros::delay(30);
-        if (controller.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_DOWN)){ {
-            controller.rumble("---"); // Alert driver
-            motorControlTask.remove(); // Stop the existing task
-            pros::delay(500); // Small delay to ensure task is removed
-            motorControlTask = pros::Task(motorControl, NULL, "Motor Control Task");
-        }
-
     }
 
 
-}}
+
 
 
 void autonomous() {
     
 onetwo_motor.move(-67);
-/*
+
 pros::delay(1000);
 onetwo_motor.move(0); 
 
@@ -594,7 +588,7 @@ onetwo_motor.move(0);
     int a = -1;
     int b = -1;
     pros::Task convTask (convAuton, NULL, "Conveyor Task");
-
+/*
 
     chassis.setBrakeMode(pros::E_MOTOR_BRAKE_BRAKE);
     chassis.setPose(a*62, b*17, 90);
@@ -628,10 +622,11 @@ onetwo_motor.move(0);
     chassis.waitUntilDone();
     convState(1, 1);
     pros::delay(3000);
-    convState(0, -1);
+    */
+    convState(0, 2);
+    convTask.remove(); // Stop conveyor task
 
 
-*/
 
 
     while (true){
